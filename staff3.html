@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ポイント付与（スタッフ用）</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #1c1b19;
+    --card: #282724;
+    --ink: #f3f0ea;
+    --sub: #a59e93;
+    --accent: #c9a46a;
+    --line: #3a3834;
+    --ok: #6fae7c;
+    --err: #e07a63;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 480px; margin: 0 auto; padding: 16px 16px 40px; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  header .store { font-size: 14px; color: var(--sub); }
+  header button { width: auto; margin: 0; padding: 6px 12px; font-size: 13px; }
+  .card { background: var(--card); border-radius: 16px; padding: 18px 16px; margin-bottom: 14px; }
+  .step { font-size: 12px; color: var(--sub); letter-spacing: .06em; margin-bottom: 10px; }
+  label { display: block; font-size: 13px; color: var(--sub); margin: 12px 0 6px; }
+  input {
+    width: 100%; padding: 13px 12px; font-size: 18px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  button {
+    display: block; width: 100%; margin-top: 12px; padding: 14px; font-size: 16px;
+    border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1c1b19; font-weight: 700; }
+  button:disabled { opacity: .4; }
+  #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-top: 10px; }
+  .member { font-family: ui-monospace, Menlo, monospace; font-size: 30px; letter-spacing: .15em; text-align: center; padding: 6px 0; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-of-type { border-bottom: none; }
+  .row .what { font-size: 15px; }
+  .row .rule { display: block; font-size: 11px; color: var(--sub); margin-top: 2px; }
+  .counter { display: flex; align-items: center; gap: 6px; }
+  .counter button { width: 44px; height: 44px; margin: 0; padding: 0; font-size: 22px; line-height: 1; }
+  .counter input { width: 64px; text-align: center; padding: 10px 4px; }
+  .yen { display: flex; align-items: center; gap: 6px; }
+  .yen input { width: 130px; text-align: right; }
+  .yen span { color: var(--sub); font-size: 14px; }
+  .calc { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--bg); font-size: 13px; color: var(--sub); text-align: center; }
+  .calc b { display: block; font-size: 26px; color: var(--accent); margin-top: 4px; }
+  .result { text-align: center; padding: 26px 16px; }
+  .result .big { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .result.ok .big { color: var(--ok); }
+  .result.err .big { color: var(--err); }
+  .result .sub { color: var(--sub); font-size: 14px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- 最初の設定（店舗とPIN） -->
+  <section id="setup" class="hidden">
+    <div class="card">
+      <div class="step">最初の設定（この端末で1回だけ）</div>
+      <label for="storeInput">店舗名（スプシの「店舗」シートと同じ名前）</label>
+      <input id="storeInput" placeholder="テスト店">
+      <label for="pinInput">PIN</label>
+      <input id="pinInput" inputmode="numeric" placeholder="1234">
+      <button class="primary" id="saveSetup">保存する</button>
+    </div>
+  </section>
+
+  <!-- 付与画面 -->
+  <section id="main" class="hidden">
+    <header>
+      <span class="store" id="storeLabel"></span>
+      <button id="changeStore">店舗変更</button>
+    </header>
+
+    <div class="card">
+      <div class="step">① お客様の会員QRを読み取る</div>
+      <button class="primary" id="startScan">カメラで読み取る</button>
+      <div id="reader" class="hidden"></div>
+      <label for="memberInput">読み取れないときは会員番号を入力</label>
+      <input id="memberInput" inputmode="numeric" maxlength="6" placeholder="000001">
+      <div class="member hidden" id="memberShow"></div>
+    </div>
+
+    <div class="card">
+      <div class="step">② 会計の内容を入れる</div>
+      <div class="row">
+        <div class="what">妖精さんドリンク<span class="rule">1杯＝1pt</span></div>
+        <div class="counter" data-key="drink">
+          <button data-d="-1">−</button><input inputmode="numeric" value="0"><button data-d="1">＋</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="what">チップコイン<span class="rule">1枚＝1pt</span></div>
+        <div class="counter" data-key="coin">
+          <button data-d="-1">−</button><input inputmode="numeric" value="0"><button data-d="1">＋</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="what">シャンパン小計<span class="rule">1,000円ごとに1pt</span></div>
+        <div class="yen"><input id="subtotalInput" inputmode="numeric" placeholder="0"><span>円</span></div>
+      </div>
+      <div class="calc" id="calc"></div>
+    </div>
+
+    <button class="primary" id="grant" disabled>付与する</button>
+  </section>
+
+  <!-- 結果 -->
+  <section id="resultBox" class="hidden">
+    <div class="card result" id="result">
+      <div class="big" id="resultBig"></div>
+      <div class="sub" id="resultSub"></div>
+    </div>
+    <button class="primary" id="next">次のお客様へ</button>
+  </section>
+
+</main>
+
+<script>
+  // ===== 設定（ステップ3のあとで書き換えます） =====
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwF6u3eB8Oc6B4kUPo0Vkt0CS7SF783wJME-csFJ4QfuXbtqbYwH0b4E7o5B1SSiwGo/exec';
+
+  const $ = id => document.getElementById(id);
+  const show = id => ['setup', 'main', 'resultBox'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+
+  // この端末に店舗とPINを覚えておく（使えない環境でも動くように）
+  const store = {
+    get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return mem[k] || ''; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { mem[k] = v; } }
+  };
+  const mem = {};
+
+  let scanner = null;
+  let memberNo = '';
+  let points = 0;
+  const counts = { drink: 0, coin: 0, subtotal: 0 };
+
+  // キャンディの付与ルール（ここを変えれば計算が変わります）
+  function calcPoints() {
+    const d = counts.drink, c = counts.coin, s = Math.floor(counts.subtotal / 1000);
+    return { d, c, s, total: d + c + s };
+  }
+  let requestId = '';
+
+  function newRequestId() {
+    return (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
+  }
+
+  function refresh() {
+    $('memberShow').textContent = memberNo;
+    $('memberShow').classList.toggle('hidden', !memberNo);
+    const r = calcPoints();
+    points = r.total;
+    $('calc').innerHTML = `ドリンク ${r.d}pt ＋ コイン ${r.c}pt ＋ シャンパン ${r.s}pt<b>${points.toLocaleString()}pt</b>`;
+    $('grant').disabled = !(memberNo && points > 0);
+    $('grant').textContent = memberNo && points > 0
+      ? `${memberNo} さんに ${points.toLocaleString()}pt 付与する` : '付与する';
+  }
+
+  function resetForm() {
+    memberNo = ''; requestId = newRequestId();
+    counts.drink = 0; counts.coin = 0; counts.subtotal = 0;
+    document.querySelectorAll('.counter input').forEach(i => i.value = '0');
+    $('memberInput').value = ''; $('subtotalInput').value = '';
+    refresh();
+  }
+
+  // ----- 最初の設定 -----
+  function openMain() {
+    $('storeLabel').textContent = store.get('store');
+    resetForm();
+    show('main');
+  }
+  $('saveSetup').onclick = () => {
+    const s = $('storeInput').value.trim(), p = $('pinInput').value.trim();
+    if (!s || !p) { alert('店舗名とPINを入れてください'); return; }
+    store.set('store', s); store.set('pin', p);
+    openMain();
+  };
+  $('changeStore').onclick = () => {
+    $('storeInput').value = store.get('store'); $('pinInput').value = '';
+    show('setup');
+  };
+
+  // ----- QR読み取り -----
+  $('startScan').onclick = async () => {
+    if (scanner) { await stopScan(); return; }
+    $('reader').classList.remove('hidden');
+    $('startScan').textContent = '読み取りをやめる';
+    scanner = new Html5Qrcode('reader');
+    try {
+      await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, text => {
+        const no = String(text).trim();
+        if (/^\d{6}$/.test(no)) {
+          memberNo = no; $('memberInput').value = '';
+          if (navigator.vibrate) navigator.vibrate(80);
+          stopScan(); refresh();
+        }
+      });
+    } catch (e) {
+      alert('カメラを起動できませんでした。会員番号を入力してください。\n' + e);
+      stopScan();
+    }
+  };
+  async function stopScan() {
+    if (scanner) { try { await scanner.stop(); } catch (e) {} scanner = null; }
+    $('reader').classList.add('hidden');
+    $('startScan').textContent = 'カメラで読み取る';
+  }
+  $('memberInput').oninput = e => {
+    const v = e.target.value.replace(/\D/g, '');
+    e.target.value = v;
+    memberNo = v.length === 6 ? v : '';
+    refresh();
+  };
+
+  // ----- ポイント -----
+  document.querySelectorAll('.counter').forEach(box => {
+    const key = box.dataset.key, input = box.querySelector('input');
+    box.querySelectorAll('button').forEach(b => b.onclick = () => {
+      counts[key] = Math.max(0, counts[key] + Number(b.dataset.d));
+      input.value = counts[key]; refresh();
+    });
+    input.oninput = () => {
+      const v = input.value.replace(/\D/g, '');
+      input.value = v;
+      counts[key] = Number(v) || 0; refresh();
+    };
+  });
+  $('subtotalInput').oninput = e => {
+    const v = e.target.value.replace(/\D/g, '');
+    counts.subtotal = Number(v) || 0;
+    e.target.value = v ? counts.subtotal.toLocaleString() : '';
+    refresh();
+  };
+
+  // ----- 付与 -----
+  $('grant').onclick = async () => {
+    $('grant').disabled = true;
+    $('grant').textContent = '送信中…';
+    let data;
+    try {
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'grant', store: store.get('store'), pin: store.get('pin'),
+          memberNo, points, requestId,
+          drink: counts.drink, coin: counts.coin, subtotal: counts.subtotal
+        })
+      });
+      data = await res.json();
+    } catch (e) {
+      data = { ok: false, error: '通信に失敗しました。もう一度「付与する」を押してください（二重には付きません）' };
+    }
+
+    const box = $('result');
+    box.classList.remove('ok', 'err');
+    if (data.ok) {
+      box.classList.add('ok');
+      $('resultBig').textContent = data.duplicated ? 'すでに付与済みです' : `${points.toLocaleString()}pt 付与しました`;
+      $('resultSub').textContent = `会員番号 ${memberNo}　残高 ${Number(data.balance).toLocaleString()}pt`;
+      $('next').textContent = '次のお客様へ';
+      $('next').onclick = () => { resetForm(); show('main'); };
+    } else {
+      box.classList.add('err');
+      $('resultBig').textContent = '付与できませんでした';
+      $('resultSub').textContent = data.error || '';
+      $('next').textContent = '戻る';
+      // 入力内容と受付IDはそのまま残す（やり直しても二重にならない）
+      $('next').onclick = () => { refresh(); show('main'); };
+    }
+    show('resultBox');
+  };
+
+  // ----- 起動 -----
+  if (store.get('store') && store.get('pin')) openMain(); else show('setup');
+</script>
+</body>
+</html>
